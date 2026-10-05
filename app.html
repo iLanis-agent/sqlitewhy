@@ -154,7 +154,8 @@ code{font:13px ui-monospace,Menlo,Consolas,monospace;background:#e1eef7;padding:
     var u = String(decl).toUpperCase();
     if (af.a === 'INTEGER' && /REAL|FLOA|DOUB|CHAR|CLOB|TEXT|BLOB/.test(u)) notes.push(['warn', 'The name also contains a REAL, TEXT or BLOB keyword, but the INT check comes first, so the column gets INTEGER affinity.']);
     if (af.a === 'NUMERIC' && /STRING|VARIANT|BOOL|DATE|TIME|DECIMAL|MONEY/.test(u)) notes.push(['info', 'Common names like this are not special in SQLite. Anything without INT, CHAR, CLOB, TEXT, BLOB, REAL, FLOA or DOUB falls back to NUMERIC.']);
-    if (v.c === st.c && (v.c !== 'real' || v.v === st.v) && (v.c !== 'integer' || v.v === st.v) && (v.c !== 'text' || v.v === st.v)) {
+    var overflow = v.c === 'real' && /^[+-]?\d+$/.test(String(src).trim().replace(/^'|'$/g, ''));
+    if (overflow) { /* handled below */ } else if (v.c === st.c && (v.c !== 'real' || v.v === st.v) && (v.c !== 'integer' || v.v === st.v) && (v.c !== 'text' || v.v === st.v)) {
       if (af.a === 'TEXT' && v.c === 'text') notes.push(['good', 'Stored as given.']);
       else if ((af.a === 'INTEGER' || af.a === 'NUMERIC' || af.a === 'REAL') && v.c === 'text') notes.push(['warn', 'It stays text: SQLite only converts text that is a complete number (optional sign, digits, one dot, exponent, spaces around). "12abc", "0x10", "1_000" and empty text are not.']);
       else notes.push(['good', 'Stored as given.']);
@@ -163,7 +164,7 @@ code{font:13px ui-monospace,Menlo,Consolas,monospace;background:#e1eef7;padding:
     else if (v.c === 'real' && st.c === 'integer') notes.push(['warn', 'A REAL value with no fractional part is stored as INTEGER under ' + af.a + ' affinity, so ' + S.show(v) + ' becomes ' + S.show(st) + '.']);
     else if (st.c === 'real' && af.a === 'REAL' && (v.c === 'integer' || v.c === 'text')) notes.push(['info', 'REAL affinity forces numbers to floating point, so it is stored as ' + S.show(st) + '.']);
     else if (v.c === 'real' && st.c === 'real' && v.v !== st.v) notes.push(['info', 'Stored as a floating point number.']);
-    if (v.c === 'real' && /^[+-]?\d+$/.test(String(src).trim().replace(/^'|'$/g, ''))) notes.push(['err', 'The number does not fit in a 64-bit integer (max 9223372036854775807), so SQLite stores it as a REAL and precision is lost.']);
+    if (overflow) notes.push(['err', 'The number does not fit in a 64-bit integer (max 9223372036854775807), so SQLite stores it as a REAL and precision is lost.']);
     return { af: af, v: v, st: st, notes: notes };
   }
   function note(n) { return '<div class="n ' + n[0] + '">' + n[1] + '</div>'; }
@@ -171,7 +172,7 @@ code{font:13px ui-monospace,Menlo,Consolas,monospace;background:#e1eef7;padding:
     var a = describe($('da').value, $('va').value), h = '';
     if (a.err) $('outa').innerHTML = '<div class="n err">' + esc(a.err) + '</div>';
     else {
-      h = '<div class="card"><div class="kv"><b>Affinity</b><span>' + a.af.a + '</span><b>Because</b><span style="font-family:inherit">' + esc(a.af.rule) + '</span><b>You insert</b><span>' + esc(S.show(a.v)) + '</span><b>Stored as</b><span>' + a.st.c.toUpperCase() + ' ' + esc(S.show(a.st)) + '</span></div>' + a.notes.map(note).join('') + '</div>';
+      h = '<div class="card"><div class="kv"><b>Affinity</b><span>' + a.af.a + '</span><b>Because</b><span style="font-family:inherit">' + esc(a.af.rule) + '</span><b>You insert</b><span>' + esc($('va').value.trim()) + '</span><b>Stored as</b><span>' + a.st.c.toUpperCase() + ' ' + esc(S.show(a.st)) + '</span></div>' + a.notes.map(note).join('') + '</div>';
       $('outa').innerHTML = h;
     }
     var lit = $('lit').checked, b;
@@ -182,7 +183,7 @@ code{font:13px ui-monospace,Menlo,Consolas,monospace;background:#e1eef7;padding:
     if (c.cmp === null) ch += '<b>A = B</b><span>NULL</span><b>A &lt; B</b><span>NULL</span></div>';
     else ch += '<b>A &lt; B</b><span>' + (c.cmp < 0 ? 1 : 0) + '</span><b>A = B</b><span>' + (c.cmp === 0 ? 1 : 0) + '</span><b>A &gt; B</b><span>' + (c.cmp > 0 ? 1 : 0) + '</span></div>';
     if (c.note) ch += '<div class="n info">' + c.note + (c.a && S.show(c.a) !== S.show(a.st) ? ' A became ' + esc(S.show(c.a)) + '.' : '') + (c.b && S.show(c.b) !== S.show(b.st) ? ' B became ' + esc(S.show(c.b)) + '.' : '') + '</div>';
-    if (c.cmp !== null && x.c !== y.c && !((x.c === 'integer' || x.c === 'real') && (y.c === 'integer' || y.c === 'real'))) ch += '<div class="n warn">The two sides are different storage classes (' + x.c + ' and ' + y.c + ') and no conversion applied, so SQLite orders by class: numbers before text before blobs. That is why <code>10 &lt; \'9\'</code> is true here.</div>';
+    if (c.cmp !== null && x.c !== y.c && !((x.c === 'integer' || x.c === 'real') && (y.c === 'integer' || y.c === 'real'))) ch += '<div class="n warn">The two sides are different storage classes (' + x.c + ' and ' + y.c + ') and no conversion applied, so SQLite orders by class: numbers before text before blobs. For example <code>10 &lt; \'9\'</code> is true.</div>';
     if (c.cmp !== null && x.c === 'text' && y.c === 'text' && /^\d+$/.test(x.v) && /^\d+$/.test(y.v) && x.v.length !== y.v.length) ch += '<div class="n warn">Both are text, so they compare character by character: \'10\' &lt; \'9\' because "1" sorts before "9".</div>';
     $('outc').innerHTML = ch + '</div>';
   }
